@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: pgdata
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB}
+      POSTGRES_USER: ${USER}
+      POSTGRES_PASSWORD: ${PASSWORD}
+    ports:
+      - "${PORT}:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data

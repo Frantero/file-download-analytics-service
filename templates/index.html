@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Сервис скачивания и анализа файлов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+    <h1 class="mb-4">Панель управления файлами</h1>
+
+    <!-- Вкладки -->
+    <ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" id="download-tab" data-bs-toggle="tab" data-bs-target="#download-sec" type="button">1. Скачивание данных</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="files-tab" data-bs-toggle="tab" data-bs-target="#files-sec" type="button" onclick="loadFiles(1)">2. Файлы и Расчёты</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- СЕКЦИЯ 1: СКАЧИВАНИЕ -->
+        <div class="tab-pane fade show active" id="download-sec">
+            <div class="card p-4">
+                <h4>Процесс загрузки каталога</h4>
+                <div class="my-3">
+                    <button class="btn btn-primary btn-lg" id="startBtn" onclick="startDownload()">Скачать данные</button>
+                </div>
+
+                <!-- Блок статуса -->
+                <div id="statusBlock" class="mt-3" style="display: none;">
+                    <p><strong>Время старта (НСК):</strong> <span id="startTime">-</span></p>
+                    <p><strong>Статус:</strong> <span id="statusText" class="badge bg-secondary">Ожидание</span></p>
+                    <p>Получено имён: <strong id="discoveredCount">0</strong> | Скачано: <strong id="downloadedCount">0</strong></p>
+                    
+                    <div class="progress mt-2" style="height: 25px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- СЕКЦИЯ 2: СПИСОК ФАЙЛОВ И РАСЧЕТЫ -->
+        <div class="tab-pane fade" id="files-sec">
+            <div class="card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4>Скачанные файлы</h4>
+                    <button class="btn btn-success" onclick="calculateStats()">Произвести расчёты</button>
+                </div>
+
+                <!-- Фильтры и селекторы -->
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="selectAllDb" onchange="toggleSelectAllDb(this)">
+                    <label class="form-check-label text-danger fw-bold" for="selectAllDb">Выбрать вообще ВСЕ файлы в базе</label>
+                </div>
+
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th><input class="form-check-input" type="checkbox" id="selectPage" onchange="toggleSelectPage(this)"></th>
+                            <th>Имя файла</th>
+                            <th>
+                                Дата и время скачивания
+                                <button class="btn btn-sm btn-outline-secondary py-0" onclick="toggleSort()">⇅</button>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="filesTableBody">
+                        <!-- Заполняется динамически -->
+                    </tbody>
+                </table>
+
+                <!-- Пагинация -->
+                <nav class="d-flex justify-content-between align-items-center">
+                    <div>Страница <span id="currentPage">1</span></div>
+                    <ul class="pagination mb-0">
+                        <li class="page-item"><button class="page-link" onclick="changePage(-1)">Назад</button></li>
+                        <li class="page-item"><button class="page-link" onclick="changePage(1)">Вперед</button></li>
+                    </ul>
+                </nav>
+
+                <!-- Блок вывода результатов -->
+                <div id="resultsBlock" class="mt-5" style="display: none;">
+                    <h3>Результаты расчётов</h3>
+                    
+                    <h5 class="mt-3">Общая статистика по всем выбранным файлам:</h5>
+                    <table class="table table-bordered text-center table-sm w-auto">
+                        <thead class="table-dark" id="totalStatsHeader"></thead>
+                        <tr id="totalStatsRow"></tr>
+                    </table>
+
+                    <h5 class="mt-4">Детализация по файлам:</h5>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Файл</th>
+                                    <th>0</th><th>1</th><th>2</th><th>3</th><th>4</th>
+                                    <th>5</th><th>6</th><th>7</th><th>8</th><th>9</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fileStatsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let currentPage = 1;
+    let currentSort = 'desc';
+    let selectedFileIds = new Set();
+    let pollInterval = null;
+
+    // --- ЛОГИКА СКАЧИВАНИЯ ---
+    async function startDownload() {
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('statusBlock').style.display = 'block';
+
+        await fetch('/api/download/start', { method: 'POST' });
+        pollInterval = setInterval(checkStatus, 1000);
+    }
+
+    async function checkStatus() {
+        const res = await fetch('/api/download/status');
+        const data = await res.json();
+
+        document.getElementById('startTime').innerText = data.started_at_nsk || '-';
+        document.getElementById('discoveredCount').innerText = data.total_discovered;
+        document.getElementById('downloadedCount').innerText = data.total_downloaded;
+
+        const statusText = document.getElementById('statusText');
+        if (data.is_running) {
+            statusText.innerText = "Скачивание...";
+            statusText.className = "badge bg-warning text-dark";
+        } else if (data.total_discovered > 0 && data.total_discovered === data.total_downloaded) {
+            statusText.innerText = "Завершено";
+            statusText.className = "badge bg-success";
+            clearInterval(pollInterval);
+            document.getElementById('startBtn').disabled = false;
+        }
+
+        let pct = data.total_discovered > 0 ? Math.round((data.total_downloaded / data.total_discovered) * 100) : 0;
+        const pBar = document.getElementById('progressBar');
+        pBar.style.width = pct + '%';
+        pBar.innerText = pct + '%';
+    }
+
+    // --- ЛОГИКА ТАБЛИЦЫ ФАЙЛОВ ---
+    async function loadFiles(page) {
+        currentPage = page;
+        const res = await fetch(`/api/analytics/files?page=${page}&page_size=10&order=${currentSort}`);
+        const files = await res.json();
+
+        const tbody = document.getElementById('filesTableBody');
+        tbody.innerHTML = '';
+        document.getElementById('currentPage').innerText = currentPage;
+
+        files.forEach(f => {
+            const isChecked = selectedFileIds.has(f.id) ? 'checked' : '';
+            tbody.innerHTML += `
+                <tr>
+                    <td><input class="form-check-input file-checkbox" type="checkbox" value="${f.id}" ${isChecked} onchange="toggleFileSelect(${f.id}, this.checked)"></td>
+                    <td>${f.filename}</td>
+                    <td>${new Date(f.downloaded_at).toLocaleString()}</td>
+                </tr>
+            `;
+        });
+    }
+
+    function changePage(delta) {
+        if (currentPage + delta >= 1) loadFiles(currentPage + delta);
+    }
+
+    function toggleSort() {
+        currentSort = currentSort === 'desc' ? 'asc' : 'desc';
+        loadFiles(currentPage);
+    }
+
+    function toggleFileSelect(id, isChecked) {
+        if (isChecked) selectedFileIds.add(id);
+        else selectedFileIds.delete(id);
+    }
+
+    function toggleSelectPage(masterCb) {
+        document.querySelectorAll('.file-checkbox').forEach(cb => {
+            cb.checked = masterCb.checked;
+            toggleFileSelect(parseInt(cb.value), masterCb.checked);
+        });
+    }
+
+    function toggleSelectAllDb(cb) {
+        const disableTable = cb.checked;
+        document.querySelectorAll('.file-checkbox').forEach(c => c.disabled = disableTable);
+        document.getElementById('selectPage').disabled = disableTable;
+    }
+
+    // --- ЛОГИКА РАСЧЕТОВ ---
+    async function calculateStats() {
+        const selectAllDb = document.getElementById('selectAllDb').checked;
+        const payload = selectAllDb 
+            ? { select_all: true } 
+            : { file_ids: Array.from(selectedFileIds) };
+
+        if (!selectAllDb && payload.file_ids.length === 0) {
+            alert('Выберите хотя бы один файл!');
+            return;
+        }
+
+        const res = await fetch('/api/analytics/calculate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            alert('Ошибка при вычислении!');
+            return;
+        }
+
+        const data = await res.json();
+        renderResults(data);
+    }
+
+    function renderResults(data) {
+        document.getElementById('resultsBlock').style.display = 'block';
+
+        // 1. Общая таблица
+        const thead = document.getElementById('totalStatsHeader');
+        const trow = document.getElementById('totalStatsRow');
+        thead.innerHTML = '<tr>' + Object.keys(data.total_stats).map(d => `<th>Цифра ${d}</th>`).join('') + '</tr>';
+        trow.innerHTML = Object.values(data.total_stats).map(v => `<td><b>${v}</b></td>`).join('');
+
+        // 2. Детальная таблица
+        const tbody = document.getElementById('fileStatsBody');
+        tbody.innerHTML = '';
+        data.file_stats.forEach(item => {
+            let row = `<tr><td>${item.filename}</td>`;
+            for (let i = 0; i <= 9; i++) {
+                row += `<td>${item.stats[i] || 0}</td>`;
+            }
+            row += '</tr>';
+            tbody.innerHTML += row;
+        });
+    }
+</script>
+</body>
+</html>

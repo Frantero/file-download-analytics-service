@@ -56,7 +56,7 @@
 Если вы хотите запустить приложение локально, а в Docker поднять только базу данных:
 
 ```bash
-# 1. создаем .env
+# 1. Cоздаем .env
 cp .env.example .env
 
 # 2. Запускаем только контейнер с БД
@@ -64,7 +64,7 @@ docker-compose up -d
 
 # 3. Создаем и активируем виртуальное окружение
 python -m venv venv
-source venv/bin/activate  # Для Linux/macOS
+source venv/bin/activate  
 
 # 4. Устанавливаем зависимости
 pip install -r requirements.txt
